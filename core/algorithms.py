@@ -112,15 +112,59 @@ class LFU(PagingAlgorithm):
         sorted_keys = sorted(self.cache.keys(), key=lambda k: self.time[k])
         return [{'val': k, 'freq': self.cache[k]} for k in sorted_keys]
 
-# --- CLOCK (Logic chuẩn vòng tròn) ---
+# # --- CLOCK (Logic chuẩn vòng tròn) ---
+# class CLOCK(PagingAlgorithm):
+#     def __init__(self, capacity):
+#         super().__init__(capacity)
+#         # Khởi tạo sẵn các slot trống để vẽ vòng tròn cho đẹp ngay từ đầu
+#         # frames là list các dict hoặc None
+#         self.frames = [{'val': None, 'bit': 0} for _ in range(capacity)]
+#         self.hand = 0
+#         self.valid_count = 0 # Đếm số phần tử thực sự có giá trị
+
+#     def access(self, page):
+#         # 1. Check HIT
+#         for i in range(self.capacity):
+#             if self.frames[i]['val'] == page:
+#                 self.hits += 1
+#                 self.frames[i]['bit'] = 1
+#                 return "HIT", None
+        
+#         # 2. MISS
+#         self.misses += 1
+#         evicted = None
+        
+#         while True:
+#             current = self.frames[self.hand]
+            
+#             # Nếu slot trống (chưa có giá trị) -> Điền vào luôn
+#             if current['val'] is None:
+#                 current['val'] = page
+#                 current['bit'] = 1
+#                 self.hand = (self.hand + 1) % self.capacity
+#                 self.valid_count += 1
+#                 return "MISS", None
+            
+#             # Nếu có giá trị, kiểm tra bit
+#             if current['bit'] == 1:
+#                 current['bit'] = 0 # Give second chance
+#                 self.hand = (self.hand + 1) % self.capacity
+#             else:
+#                 # Bit == 0 -> Replace
+#                 evicted = current['val']
+#                 current['val'] = page
+#                 current['bit'] = 1
+#                 self.hand = (self.hand + 1) % self.capacity
+#                 return "MISS", evicted
+
+#     def get_cache_state(self):
+#         return self.frames
+
 class CLOCK(PagingAlgorithm):
     def __init__(self, capacity):
         super().__init__(capacity)
-        # Khởi tạo sẵn các slot trống để vẽ vòng tròn cho đẹp ngay từ đầu
-        # frames là list các dict hoặc None
         self.frames = [{'val': None, 'bit': 0} for _ in range(capacity)]
         self.hand = 0
-        self.valid_count = 0 # Đếm số phần tử thực sự có giá trị
 
     def access(self, page):
         # 1. Check HIT
@@ -129,33 +173,34 @@ class CLOCK(PagingAlgorithm):
                 self.hits += 1
                 self.frames[i]['bit'] = 1
                 return "HIT", None
-        
+
         # 2. MISS
-        self.misses += 1
-        evicted = None
+        # Lưu ý: Không cộng misses ngay tại đây vì có thể tốn nhiều bước quét
+        # Chúng ta sẽ kiểm tra xem vị trí hiện tại có xử lý được luôn không
         
-        while True:
-            current = self.frames[self.hand]
-            
-            # Nếu slot trống (chưa có giá trị) -> Điền vào luôn
-            if current['val'] is None:
-                current['val'] = page
-                current['bit'] = 1
-                self.hand = (self.hand + 1) % self.capacity
-                self.valid_count += 1
-                return "MISS", None
-            
-            # Nếu có giá trị, kiểm tra bit
-            if current['bit'] == 1:
-                current['bit'] = 0 # Give second chance
-                self.hand = (self.hand + 1) % self.capacity
-            else:
-                # Bit == 0 -> Replace
-                evicted = current['val']
-                current['val'] = page
-                current['bit'] = 1
-                self.hand = (self.hand + 1) % self.capacity
-                return "MISS", evicted
+        current = self.frames[self.hand]
+        
+        # Trường hợp 1: Slot trống -> Điền vào (Xong luôn)
+        if current['val'] is None:
+            self.misses += 1
+            current['val'] = page
+            current['bit'] = 1
+            self.hand = (self.hand + 1) % self.capacity
+            return "MISS", None
+
+        # Trường hợp 2: Có bit 1 -> Hạ xuống 0 và dịch kim (Trả về STEP)
+        if current['bit'] == 1:
+            current['bit'] = 0 
+            self.hand = (self.hand + 1) % self.capacity
+            return "STEP", None # Trạng thái trung gian
+
+        # Trường hợp 3: Bit == 0 -> Thay thế (Xong luôn)
+        self.misses += 1
+        evicted = current['val']
+        current['val'] = page
+        current['bit'] = 1
+        self.hand = (self.hand + 1) % self.capacity
+        return "MISS", evicted
 
     def get_cache_state(self):
         return self.frames
